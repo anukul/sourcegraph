@@ -210,15 +210,31 @@ func (g globError) Error() string {
 }
 
 // mapGlobToRegex translates glob to regexp for fields repo, file, and repohasfile.
+// It respects the revision syntax for field repo. The first occurrence of @ in repo's value
+// is treated as the separator between repository name and revision. All further @ are treated
+// literally. Revisions are not translated from glob to regex.
 func mapGlobToRegex(nodes []Node) ([]Node, error) {
 	var globErrors []globError
 	var err error
 
 	nodes = MapParameter(nodes, func(field, value string, negated bool, annotation Annotation) Node {
-		if field == FieldRepo || field == FieldFile || field == FieldRepoHasFile {
+		switch field {
+		case FieldRepo:
+			reporev := strings.SplitN(value, "@", 2)
+			repo, err := globToRegex(reporev[0])
+			if err != nil {
+				globErrors = append(globErrors, globError{field: field, err: err})
+				break
+			}
+			value = repo
+			if len(reporev) > 1 {
+				value = value + "@" + reporev[1]
+			}
+		case FieldFile, FieldRepoHasFile:
 			value, err = globToRegex(value)
 			if err != nil {
 				globErrors = append(globErrors, globError{field: field, err: err})
+				break
 			}
 		}
 		return Parameter{Field: field, Value: value, Negated: negated, Annotation: annotation}
